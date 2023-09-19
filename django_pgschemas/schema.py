@@ -1,10 +1,9 @@
+from contextvars import ContextVar
 from typing import Optional
-
-from asgiref.local import Local
 
 from .signals import schema_activate
 
-_active = Local()
+_active: ContextVar["Optional[Schema]"] = ContextVar("active_schema", default=None)
 
 
 def __getattr__(name):
@@ -22,7 +21,7 @@ def get_default_schema() -> "Schema":
 
 
 def get_current_schema() -> "Schema":
-    current_schema = getattr(_active, "value", None)
+    current_schema = _active.get()
     return current_schema or get_default_schema()
 
 
@@ -30,15 +29,12 @@ def activate(schema: "Schema"):
     if not isinstance(schema, Schema):
         raise RuntimeError("'activate' must be called with a Schema descendant")
 
-    _active.value = schema
-
+    _active.set(schema)
     schema_activate.send(sender=Schema, schema=schema)
 
 
 def deactivate():
-    if hasattr(_active, "value"):
-        del _active.value
-
+    _active.set(None)
     schema_activate.send(sender=Schema, schema=Schema.create("public"))
 
 
@@ -53,7 +49,7 @@ class Schema:
     is_dynamic = False
 
     @staticmethod
-    def create(schema_name: str, domain_url: Optional[str] = None, folder: Optional[str] = None):
+    def create(schema_name: str, domain_url: Optional[str] = None, folder: Optional[str] = None) -> "Schema":
         schema = Schema()
         schema.schema_name = schema_name
         schema.domain_url = domain_url
